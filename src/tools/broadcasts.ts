@@ -472,14 +472,16 @@ The \`globalContent\` node is a powerful design system that applies consistent s
 Each panel controls a component category with configurable properties:
 
 **Body Panel** (classReference: "body")
-- fontSize (px): Base font size (default: 14)
-- lineHeight (%): Line height percentage (default: 155)
-- fontFamily: System font stack (handled automatically)
+- backgroundColor (color): Body/page background color (e.g. "#f4f4f5" for light gray, "#000000" for dark mode)
+- color (color): Base text color (default: "#000000")
+- fontSize (number, px): Base font size (default: 14)
+- lineHeight (number, %): Line height percentage (default: 155)
 
 **Container Panel** (classReference: "container")
-- align: "left" | "center" | "right"
-- width (px): Container max-width (default: 600)
-- paddingLeft/paddingRight (px): Horizontal padding
+- backgroundColor (color): Container background color (e.g. "#ffffff" for white, "#151516" for dark mode)
+- align (select): "left" | "center" | "right" (default: "left")
+- width (number, px): Container max-width (default: 600)
+- paddingTop/paddingRight/paddingBottom/paddingLeft (number, px): Container padding
 
 **Link Panel** (classReference: "link")
 - color: Link text color (default: #0670DB)
@@ -503,6 +505,10 @@ Each panel controls a component category with configurable properties:
 - color: Text color (default: #1e293b)
 - borderRadius (px): Corner radius (default: 4)
 
+### Supported CSS Properties for Any Panel
+
+These properties can be added to any panel's inputs: align, backgroundColor, color, fontSize, fontWeight, lineHeight, textDecoration, borderRadius, borderTopLeftRadius, borderTopRightRadius, borderBottomLeftRadius, borderBottomRightRadius, borderWidth, borderStyle, borderColor, padding, paddingTop, paddingRight, paddingBottom, paddingLeft, width, height.
+
 ### Example globalContent Configuration
 {
   "type": "globalContent",
@@ -512,9 +518,17 @@ Each panel controls a component category with configurable properties:
       "css": "",
       "styles": [
         {
+          "title": "Body",
+          "classReference": "body",
+          "inputs": [
+            { "label": "Background", "type": "color", "value": "#f4f4f5", "prop": "backgroundColor", "classReference": "body" }
+          ]
+        },
+        {
           "title": "Container",
           "classReference": "container",
           "inputs": [
+            { "label": "Background", "type": "color", "value": "#ffffff", "prop": "backgroundColor", "classReference": "container" },
             { "label": "Width", "type": "number", "value": 600, "unit": "px", "prop": "width", "classReference": "container" },
             { "label": "Align", "type": "select", "value": "center", "prop": "align", "classReference": "container" }
           ]
@@ -690,9 +704,17 @@ Always include a footer with:
           "css": "",
           "styles": [
             {
+              "title": "Body",
+              "classReference": "body",
+              "inputs": [
+                { "label": "Background", "type": "color", "value": "#f4f4f5", "prop": "backgroundColor", "classReference": "body" }
+              ]
+            },
+            {
               "title": "Container",
               "classReference": "container",
               "inputs": [
+                { "label": "Background", "type": "color", "value": "#ffffff", "prop": "backgroundColor", "classReference": "container" },
                 { "label": "Width", "type": "number", "value": 600, "unit": "px", "prop": "width", "classReference": "container" },
                 { "label": "Align", "type": "select", "value": "center", "prop": "align", "classReference": "container" }
               ]
