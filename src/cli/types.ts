@@ -8,6 +8,7 @@ export interface StdioConfig {
   senderEmailAddress: string;
   replierEmailAddresses: string[];
   appBaseUrl: string;
+  liveUrl: string;
   transport: 'stdio';
   port: number;
 }
@@ -21,6 +22,7 @@ export interface HttpConfig {
   senderEmailAddress: string;
   replierEmailAddresses: string[];
   appBaseUrl: string;
+  liveUrl: string;
   transport: 'http';
   port: number;
 }
