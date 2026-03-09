@@ -2,6 +2,63 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Resend } from 'resend';
 import { z } from 'zod';
 
+const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+// Track active live sessions and their inactivity timers
+const activeSessions = new Map<
+  string,
+  { timer: ReturnType<typeof setTimeout>; sessionName: string }
+>();
+
+function scheduleSessionEnd(
+  broadcastId: string,
+  appBaseUrl: string,
+  apiKey: string,
+) {
+  const existing = activeSessions.get(broadcastId);
+  if (existing) {
+    clearTimeout(existing.timer);
+  }
+
+  const sessionName = existing?.sessionName ?? 'Claude';
+  const timer = setTimeout(async () => {
+    activeSessions.delete(broadcastId);
+    try {
+      await fetch(`${appBaseUrl}/api/broadcasts/${broadcastId}/live-edit`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+    } catch {
+      // Best-effort cleanup — session will expire server-side anyway
+    }
+  }, INACTIVITY_TIMEOUT_MS);
+
+  activeSessions.set(broadcastId, { timer, sessionName });
+}
+
+async function startLiveSession(
+  broadcastId: string,
+  sessionName: string,
+  appBaseUrl: string,
+  apiKey: string,
+) {
+  // POST to live-edit without content to establish presence (show avatar)
+  await fetch(`${appBaseUrl}/api/broadcasts/${broadcastId}/live-edit`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ sessionName }),
+  });
+
+  activeSessions.set(broadcastId, {
+    timer: setTimeout(() => {}, 0),
+    sessionName,
+  });
+  scheduleSessionEnd(broadcastId, appBaseUrl, apiKey);
+}
+
 export function addBroadcastTools(
   server: McpServer,
   resend: Resend,
@@ -410,10 +467,11 @@ export function addBroadcastTools(
         },
       },
       async ({ broadcastId }) => {
-        // Fetch broadcast details and verified domains in parallel
+        // Fetch broadcast details, verified domains, and start live session in parallel
         const [broadcastResponse, domainsResponse] = await Promise.all([
           resend.broadcasts.get(broadcastId),
           resend.domains.list(),
+          startLiveSession(broadcastId, 'Claude', appBaseUrl!, apiKey!),
         ]);
 
         if (broadcastResponse.error) {
@@ -1008,6 +1066,9 @@ Always include a footer with:
           );
         }
 
+        // Reset the inactivity timer — avatar stays visible for another 5 minutes
+        scheduleSessionEnd(broadcastId, appBaseUrl!, apiKey!);
+
         return {
           content: [
             {
@@ -1034,6 +1095,13 @@ Always include a footer with:
         },
       },
       async ({ broadcastId }) => {
+        // Clear the inactivity timer since we're ending manually
+        const existing = activeSessions.get(broadcastId);
+        if (existing) {
+          clearTimeout(existing.timer);
+          activeSessions.delete(broadcastId);
+        }
+
         const url = `${appBaseUrl}/api/broadcasts/${broadcastId}/live-edit`;
         const response = await fetch(url, {
           method: 'DELETE',
