@@ -1,10 +1,13 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Resend } from 'resend';
 import { z } from 'zod';
+import { EMAIL_HTML_RULES } from '../lib/email-html-rules.js';
+import type { ResendApiClient } from '../lib/resend-api-client.js';
 
 export function addBroadcastTools(
   server: McpServer,
   resend: Resend,
+  apiClient: ResendApiClient,
   {
     senderEmailAddress,
     replierEmailAddresses,
@@ -28,7 +31,7 @@ export function addBroadcastTools(
 - Newsletter, announcement, or bulk message to one audience
 - Supports personalization: {{{FIRST_NAME}}}, {{{LAST_NAME}}}, {{{EMAIL}}}, {{{RESEND_UNSUBSCRIBE_URL}}}
 
-**Workflow:** list-audiences (if needed) → create-broadcast → send-broadcast( id ). Optionally update-broadcast before sending.`,
+**Workflow:** list-audiences (if needed) → create-broadcast → connect-to-editor + compose-broadcast + disconnect-from-editor (if using TipTap content) → send-broadcast( id ).`,
       inputSchema: {
         name: z
           .string()
@@ -48,7 +51,7 @@ export function addBroadcastTools(
           .string()
           .optional()
           .describe(
-            'HTML version of the email content. The following placeholders may be used to personalize the email content: {{{FIRST_NAME|fallback}}}, {{{LAST_NAME|fallback}}}, {{{EMAIL}}}, {{{RESEND_UNSUBSCRIBE_URL}}}',
+            `HTML version of the email content. Placeholders: {{{FIRST_NAME|fallback}}}, {{{LAST_NAME|fallback}}}, {{{EMAIL}}}, {{{RESEND_UNSUBSCRIBE_URL}}}.\n\n${EMAIL_HTML_RULES}`,
           ),
         previewText: z
           .string()
@@ -56,13 +59,18 @@ export function addBroadcastTools(
           .describe('Preview text for the email'),
         ...(!senderEmailAddress
           ? {
-              from: z.email().nonempty().describe('From email address'),
+              from: z
+                .string()
+                .nonempty()
+                .describe(
+                  'From email address (e.g. "onboarding@resend.com" or "Resend <onboarding@resend.com>")',
+                ),
             }
           : {}),
         ...(replierEmailAddresses.length === 0
           ? {
               replyTo: z
-                .array(z.email())
+                .array(z.string())
                 .optional()
                 .describe('Reply-to email address(es)'),
             }
@@ -117,6 +125,10 @@ export function addBroadcastTools(
         content: [
           { type: 'text', text: 'Broadcast created successfully.' },
           { type: 'text', text: `ID: ${response.data.id}` },
+          {
+            type: 'text',
+            text: `Review your broadcast before sending: https://resend.com/broadcasts/${response.data.id}\n\nOpening this link lets you:\n- Preview how the email renders across devices and email clients\n- Verify personalization placeholders resolve correctly\n- Confirm audience targeting and segment selection\n- Catch any last-minute copy or formatting issues before it reaches your contacts`,
+          },
         ],
       };
     },
@@ -320,20 +332,61 @@ export function addBroadcastTools(
   );
 
   server.registerTool(
+    'compose-broadcast',
+    {
+      title: 'Compose Broadcast',
+      description: `**Purpose:** Set the TipTap JSON content of a broadcast, enabling it to be edited visually in the Resend dashboard editor.
+
+**Workflow:** connect-to-editor → compose-broadcast → disconnect-from-editor
+
+**When to use:**
+- User wants to edit a broadcast in the Resend dashboard editor
+- After create-broadcast, to set rich editable content instead of static HTML`,
+      inputSchema: {
+        id: z.string().nonempty().describe('Broadcast ID'),
+        content: z
+          .record(z.string(), z.unknown())
+          .describe(
+            'TipTap JSON content. Call get-tiptap-schema first to get the schema reference.',
+          ),
+      },
+    },
+    async ({ id, content }) => {
+      await apiClient.composeBroadcastContent(id, { content });
+
+      return {
+        content: [
+          { type: 'text', text: 'Broadcast content composed successfully.' },
+          { type: 'text', text: `ID: ${id}` },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
     'update-broadcast',
     {
       title: 'Update Broadcast',
-      description: 'Update a broadcast by ID.',
+      description:
+        'Update broadcast metadata by ID (name, subject, from, html, text, audience, preview text). To edit TipTap content, use compose-broadcast instead.',
       inputSchema: {
         id: z.string().nonempty().describe('Broadcast ID'),
         name: z.string().optional().describe('Name for the broadcast'),
         audienceId: z.string().optional().describe('Audience ID to send to'),
-        from: z.email().optional().describe('From email address'),
-        html: z.string().optional().describe('HTML content of the email'),
+        from: z
+          .string()
+          .optional()
+          .describe(
+            'From email address (e.g. "onboarding@resend.com" or "Resend <onboarding@resend.com>")',
+          ),
+        html: z
+          .string()
+          .optional()
+          .describe(`HTML content of the email.\n\n${EMAIL_HTML_RULES}`),
         text: z.string().optional().describe('Plain text content of the email'),
         subject: z.string().optional().describe('Email subject'),
         replyTo: z
-          .array(z.email())
+          .array(z.string())
           .optional()
           .describe('Reply-to email address(es)'),
         previewText: z
@@ -373,7 +426,11 @@ export function addBroadcastTools(
       return {
         content: [
           { type: 'text', text: 'Broadcast updated successfully.' },
-          { type: 'text', text: `ID: ${response.data.id}` },
+          { type: 'text', text: `ID: ${id}` },
+          {
+            type: 'text',
+            text: `Review your broadcast before sending: https://resend.com/broadcasts/${id}\n\nOpening this link lets you:\n- Preview how the email renders across devices and email clients\n- Verify personalization placeholders resolve correctly\n- Confirm audience targeting and segment selection\n- Catch any last-minute copy or formatting issues before it reaches your contacts`,
+          },
         ],
       };
     },

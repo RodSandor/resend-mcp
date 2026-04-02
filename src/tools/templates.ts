@@ -5,13 +5,15 @@ import type {
   UpdateTemplateOptions,
 } from 'resend';
 import { z } from 'zod';
+import { EMAIL_HTML_RULES } from '../lib/email-html-rules.js';
+import type { ResendApiClient } from '../lib/resend-api-client.js';
 
 const templateVariableSchema = z.object({
   key: z
     .string()
     .nonempty()
     .describe(
-      'The variable key. Recommend capitalizing (e.g., PRODUCT_NAME). Reserved names: FIRST_NAME, LAST_NAME, EMAIL, RESEND_UNSUBSCRIBE_URL.',
+      'The variable key. Recommend capitalizing (e.g., PRODUCT_NAME). NEVER include reserved names in this list: FIRST_NAME, LAST_NAME, EMAIL, RESEND_UNSUBSCRIBE_URL — they are automatically available and will cause a validation error if added.',
     ),
   type: z
     .enum(['string', 'number'])
@@ -24,20 +26,24 @@ const templateVariableSchema = z.object({
     ),
 });
 
-export function addTemplateTools(server: McpServer, resend: Resend) {
+export function addTemplateTools(
+  server: McpServer,
+  resend: Resend,
+  apiClient: ResendApiClient,
+) {
   server.registerTool(
     'create-template',
     {
       title: 'Create Template',
       description:
-        'Create a new email template in Resend. Templates are created in draft status. Use publish-template to make them available for sending. Variables use triple-brace syntax in HTML: {{{VAR_NAME}}}.',
+        'Create a new email template in Resend. Templates are created in draft status. Use publish-template to make them available for sending. Variables use triple-brace syntax in HTML: {{{VAR_NAME}}}. To set TipTap content after creation, use connect-to-editor → compose-template → disconnect-from-editor.',
       inputSchema: {
         name: z.string().nonempty().describe('The name of the template.'),
         html: z
           .string()
           .nonempty()
           .describe(
-            'The HTML content of the template. Use triple-brace syntax for variables: {{{VARIABLE_NAME}}}.',
+            `The HTML content of the template. Use triple-brace syntax for variables: {{{VARIABLE_NAME}}}.\n\n${EMAIL_HTML_RULES}`,
           ),
         subject: z
           .string()
@@ -98,6 +104,10 @@ export function addTemplateTools(server: McpServer, resend: Resend) {
           {
             type: 'text',
             text: 'The template is in draft status. Use publish-template to make it available for sending.',
+          },
+          {
+            type: 'text',
+            text: `Review your template before publishing: https://resend.com/templates/${response.data.id}\n\nOpening this link lets you:\n- Preview how the email renders across devices and email clients\n- Verify variables and placeholders are correctly defined\n- Check formatting, layout, and branding before it goes live\n- Catch any issues before the template is used in sends`,
           },
         ],
       };
@@ -241,18 +251,52 @@ export function addTemplateTools(server: McpServer, resend: Resend) {
   );
 
   server.registerTool(
+    'compose-template',
+    {
+      title: 'Compose Template',
+      description: `**Purpose:** Set the TipTap JSON content of a template, enabling it to be edited visually in the Resend dashboard editor.
+
+**Workflow:** connect-to-editor → compose-template → disconnect-from-editor
+
+**When to use:**
+- User wants to edit a template in the Resend dashboard editor
+- After create-template, to set rich editable content instead of static HTML`,
+      inputSchema: {
+        id: z.string().nonempty().describe('The template ID or alias.'),
+        content: z
+          .record(z.string(), z.unknown())
+          .describe(
+            'TipTap JSON content. Call get-tiptap-schema first to get the schema reference.',
+          ),
+      },
+    },
+    async ({ id, content }) => {
+      await apiClient.composeTemplateContent(id, { content });
+
+      return {
+        content: [
+          { type: 'text', text: 'Template content composed successfully.' },
+          { type: 'text', text: `ID: ${id}` },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
     'update-template',
     {
       title: 'Update Template',
       description:
-        'Update an existing email template in Resend by ID or alias. After updating a published template, use publish-template again to make the changes live.',
+        'Update template metadata by ID or alias (name, subject, from, html, variables, etc.). After updating a published template, use publish-template again to make the changes live. To edit TipTap content, use compose-template instead.',
       inputSchema: {
         id: z.string().nonempty().describe('The template ID or alias.'),
         name: z.string().optional().describe('New name for the template.'),
         html: z
           .string()
           .optional()
-          .describe('New HTML content for the template.'),
+          .describe(
+            `New HTML content for the template.\n\n${EMAIL_HTML_RULES}`,
+          ),
         subject: z.string().optional().describe('New default email subject.'),
         from: z.string().optional().describe('New sender email address.'),
         replyTo: z
@@ -303,10 +347,14 @@ export function addTemplateTools(server: McpServer, resend: Resend) {
       return {
         content: [
           { type: 'text', text: 'Template updated successfully.' },
-          { type: 'text', text: `ID: ${response.data.id}` },
+          { type: 'text', text: `ID: ${id}` },
           {
             type: 'text',
             text: 'If the template was published, use publish-template to make the changes live.',
+          },
+          {
+            type: 'text',
+            text: `Review your template before publishing: https://resend.com/templates/${id}\n\nOpening this link lets you:\n- Preview how the email renders across devices and email clients\n- Verify variables and placeholders are correctly defined\n- Check formatting, layout, and branding before it goes live\n- Catch any issues before the template is used in sends`,
           },
         ],
       };
