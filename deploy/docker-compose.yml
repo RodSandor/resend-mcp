@@ -9,7 +9,7 @@ services:
     environment:
       - RESEND_API_KEY=${RESEND_API_KEY}
     ports:
-      - "127.0.0.1:8765:8765"
+      - "192.168.2.59:8765:8765"
     user: "node"
     read_only: true
     tmpfs:
